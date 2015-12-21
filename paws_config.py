@@ -1,5 +1,5 @@
+import tornado
 from tornado import gen
-from tornado.httpclient import AsyncHTTPClient
 import json
 import os
 
@@ -15,11 +15,13 @@ def uid_for_user(user):
           'action=query&meta=globaluserinfo' + \
           '&format=json&formatversion=2' + \
           '&guiuser={}'.format(user)
-    client = AsyncHTTPClient()
+    client = tornado.httpclient.AsyncHTTPClient()
 
     resp = yield client.fetch(url)
 
     parsed = json.loads(resp.body.decode('utf-8'))
+    if 'missing' in parsed['query']['globaluserinfo']:
+        return None
     return parsed['query']['globaluserinfo']['id']
 
 
@@ -42,6 +44,8 @@ def path_for_url_segment(url):
         uid = cached_uids[username]
     else:
         uid = yield uid_for_user(username)
+        if uid is None:
+            raise tornado.web.HTTPError(404)
         cached_uids[username] = uid
 
     return os.path.join(BASE_PATH, str(uid), 'public', path)
