@@ -25,6 +25,7 @@ def uid_for_user(user):
     return parsed['query']['globaluserinfo']['id']
 
 
+# These do not change, so let's cache them in memory
 cached_uids = {}
 
 
