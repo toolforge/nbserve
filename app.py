@@ -1,5 +1,3 @@
-import os
-import json
 import tornado
 import argparse
 import mimetypes
@@ -8,6 +6,7 @@ from nbconvert.exporters import HTMLExporter
 
 # default config
 base_url = '/'
+
 
 @tornado.gen.coroutine
 def path_for_url_segment(url_segment):
@@ -29,7 +28,6 @@ class MainHandler(tornado.web.RequestHandler):
         except FileNotFoundError:
             raise tornado.web.HTTPError(404)
 
-
     def guess_mimetype(self, path):
         # Stolen from StaticFileHandler
         mime_type, encoding = mimetypes.guess_type(path)
@@ -47,7 +45,6 @@ class MainHandler(tornado.web.RequestHandler):
             # if mime_type not detected, use application/octet-stream
             return "application/octet-stream"
 
-
     @tornado.gen.coroutine
     def handle_static_file(self, path):
         # Stolen from StaticFileHandler
@@ -59,8 +56,9 @@ class MainHandler(tornado.web.RequestHandler):
             try:
                 self.write(chunk)
                 yield self.flush()
-            except iostream.StreamClosedError:
+            except tornado.iostream.StreamClosedError:
                 return
+
 
 def make_app():
     return tornado.web.Application([
