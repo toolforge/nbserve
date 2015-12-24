@@ -1,6 +1,9 @@
 import tornado
 import argparse
 import mimetypes
+from tornado.httpclient import AsyncHTTPClient, HTTPRequest
+import json
+import os
 
 from nbconvert.exporters import HTMLExporter
 
@@ -60,18 +63,51 @@ class MainHandler(tornado.web.RequestHandler):
                 return
 
 
+def register_proxy(proxy_url, path_prefix, target, auth_token):
+    client = AsyncHTTPClient()
+    url = proxy_url + path_prefix
+    body = {'target': target}
+    req = HTTPRequest(
+        url,
+        method='POST',
+        headers={'Authorization': 'token {}'.format(auth_token)},
+        body=json.dumps(body),
+    )
+
+    return client.fetch(req)
+
+
 def make_app():
     return tornado.web.Application([
         (r"{}(.*)".format(base_url), MainHandler),
     ], autoreload=True)
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--config',
         help='Path to config file',
     )
+    parser.add_argument(
+        '--bind-ip',
+        help='IP on which to listen for requests',
+        default='127.0.0.1',
+    )
+    parser.add_argument(
+        '--bind-port',
+        help='Port on which to listen for requests',
+        default=8889
+    )
 
+    parser.add_argument(
+        '--proxy-api-url',
+        help='Full URL of the CHP REST API',
+    )
+    parser.add_argument(
+        '--proxy-target-ip',
+        help='IP for the proxy proxy requests back to',
+    )
     args = parser.parse_args()
 
     if args.config:
@@ -79,5 +115,18 @@ if __name__ == "__main__":
             exec(compile(f.read(), args.config, 'exec'), globals())
 
     app = make_app()
-    app.listen(8888)
+
+    app.listen(args.bind_port, address=args.bind_ip)
+    if args.proxy_api_url:
+        if args.proxy_target_ip:
+            target_ip = args.proxy_target_ip
+        else:
+            target_ip = args.bind_ip
+        auth_token = os.environ['CONFIGPROXY_AUTH_TOKEN']
+        tornado.ioloop.IOLoop.current().run_sync(lambda: register_proxy(
+            args.proxy_api_url,
+            base_url,
+            'http://{}:{}'.format(target_ip, args.bind_port),
+            auth_token,
+        ))
     tornado.ioloop.IOLoop.current().start()
