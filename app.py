@@ -12,6 +12,9 @@ from nbconvert.exporters import HTMLExporter
 class PublishProvider(Configurable):
     @tornado.gen.coroutine
     def content_for_url_segment(self, url_segment):
+        """
+        Return a tuple of (file_like_obj, mimetype) to be served for this url segment
+        """
         raise NotImplementedError('Override in subclass')
 
 
@@ -22,33 +25,12 @@ class NaiveFilesystemPublisher(PublishProvider):
         help='The base path where user homedirs are stored',
     )
 
-    @tornado.gen.coroutine
-    def content_for_url_segment(self, url_segment):
-        return os.path.join(self.base_path, url_segment)
-
-
-class MainHandler(tornado.web.RequestHandler):
-
-    def __init__(self, *args, **kwargs):
-        self.publisher = kwargs.pop('publisher')
-        super().__init__(*args, **kwargs)
-
-    @tornado.gen.coroutine
-    def get(self, filename):
-        exporter = HTMLExporter()
-        path = yield self.publisher.content_for_url_segment(filename)
-        try:
-            with open(path) as f:
-                if path.endswith('.ipynb'):
-                    html, res = exporter.from_file(f)
-                    self.write(html)
-                else:
-                    return self.handle_static_file(path)
-        except FileNotFoundError:
-            raise tornado.web.HTTPError(404)
-
     def guess_mimetype(self, path):
         # Stolen from StaticFileHandler
+        # shortcircuit .ipynb files
+        # FIXME: Integrate this shortcircuit into the mimetypes module
+        if path.endswith('.ipynb'):
+            return 'application/x-ipynb+json'
         mime_type, encoding = mimetypes.guess_type(path)
         if encoding == "gzip":
             # per RFC 6713, use the appropriate type for a gzip compressed file
@@ -65,10 +47,63 @@ class MainHandler(tornado.web.RequestHandler):
             return "application/octet-stream"
 
     @tornado.gen.coroutine
-    def handle_static_file(self, path):
+    def content_for_url_segment(self, url_segment):
+        path = os.path.join(self.base_path, url_segment)
+        mimetype = self.guess_mimetype(path)
+        return (open(path), mimetype)
+
+
+class MainHandler(tornado.web.RequestHandler):
+
+    def __init__(self, *args, **kwargs):
+        self.publisher = kwargs.pop('publisher')
+        super().__init__(*args, **kwargs)
+
+    @tornado.gen.coroutine
+    def get(self, filename):
+        exporter = HTMLExporter()
+        file_handle, mimetype = yield self.publisher.content_for_url_segment(filename)
+        try:
+            NbServer.instance().log.error(mimetype)
+            if mimetype == 'application/x-ipynb+json':
+                html, res = exporter.from_file(file_handle)
+                self.write(html)
+            else:
+                return self.handle_static_file(file_handle, mimetype)
+        except FileNotFoundError:
+            raise tornado.web.HTTPError(404)
+        finally:
+            # FIXME: Test and verify that this is actually closed properly@
+            file_handle.close()
+
+    @classmethod
+    def get_chunked_content(cls, file, start=None, end=None):
+        # Stolen and adapted from StaticFileHandler
+        if start is not None:
+            file.seek(start)
+        if end is not None:
+            remaining = end - (start or 0)
+        else:
+            remaining = None
+        while True:
+            chunk_size = 64 * 1024
+            if remaining is not None and remaining < chunk_size:
+                chunk_size = remaining
+            chunk = file.read(chunk_size)
+            if chunk:
+                if remaining is not None:
+                    remaining -= len(chunk)
+                yield chunk
+            else:
+                if remaining is not None:
+                    assert remaining == 0
+                return
+
+    @tornado.gen.coroutine
+    def handle_static_file(self, file_handle, mimetype):
         # Stolen from StaticFileHandler
-        self.set_header('Content-Type', self.guess_mimetype(path))
-        content = tornado.web.StaticFileHandler.get_content(path)
+        self.set_header('Content-Type',  mimetype)
+        content = MainHandler.get_chunked_content(file_handle)
         if isinstance(content, bytes):
             content = [content]
         for chunk in content:
