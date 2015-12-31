@@ -1,26 +1,42 @@
 import tornado
-import argparse
 import mimetypes
 from tornado.httpclient import AsyncHTTPClient, HTTPRequest
 import json
 import os
+from traitlets.config import Application, Configurable
+from traitlets import Unicode, Integer, Type, Bool, List
 
 from nbconvert.exporters import HTMLExporter
 
-# default config
-base_url = '/'
+
+class PublishProvider(Configurable):
+    @tornado.gen.coroutine
+    def content_for_url_segment(self, url_segment):
+        raise NotImplementedError('Override in subclass')
 
 
-@tornado.gen.coroutine
-def path_for_url_segment(url_segment):
-    return url_segment
+class NaiveFilesystemPublisher(PublishProvider):
+    base_path = Unicode(
+        os.getcwd(),
+        config=True,
+        help='The base path where user homedirs are stored',
+    )
+
+    @tornado.gen.coroutine
+    def content_for_url_segment(self, url_segment):
+        return os.path.join(self.base_path, url_segment)
 
 
 class MainHandler(tornado.web.RequestHandler):
+
+    def __init__(self, *args, **kwargs):
+        self.publisher = kwargs.pop('publisher')
+        super().__init__(*args, **kwargs)
+
     @tornado.gen.coroutine
     def get(self, filename):
         exporter = HTMLExporter()
-        path = yield path_for_url_segment(filename)
+        path = yield self.publisher.content_for_url_segment(filename)
         try:
             with open(path) as f:
                 if path.endswith('.ipynb'):
@@ -63,9 +79,9 @@ class MainHandler(tornado.web.RequestHandler):
                 return
 
 
-def register_proxy(proxy_url, path_prefix, target, auth_token):
+def register_proxy(proxy_api_url, path_prefix, target, auth_token):
     client = AsyncHTTPClient()
-    url = proxy_url + path_prefix
+    url = proxy_api_url + path_prefix
     body = {'target': target}
     req = HTTPRequest(
         url,
@@ -77,56 +93,90 @@ def register_proxy(proxy_url, path_prefix, target, auth_token):
     return client.fetch(req)
 
 
-def make_app():
-    return tornado.web.Application([
-        (r"{}(.*)".format(base_url), MainHandler),
-    ], autoreload=True)
+class NbServer(Application):
+    base_url = Unicode(
+        "/",
+        config=True,
+        help="Base URL prefix for nbserve. MUST have a trailing slash"
+    )
+
+    bind_ip = Unicode(
+        '127.0.0.1',
+        config=True,
+        help='IP to bind to for the HTTP Server'
+    )
+
+    bind_port = Integer(
+        8889,
+        config=True,
+        help='Port to bind to for the HTTP Server'
+    )
+
+    config_file = Unicode(
+        'nbserve_config.py',
+        config=True,
+        help='Config file to load'
+    )
+
+    publisher_class = Type(
+        NaiveFilesystemPublisher,
+        PublishProvider,
+        config=True,
+        help='Class that provides publisher (loldocumentationgetbetter)'
+    )
+
+    classes = List([
+        PublishProvider,
+    ])
+
+    proxy_api_url = Unicode(
+        'http://127.0.0.1:8001/api/routes',
+        config=True,
+        help='Full API URL for the REST Configurable HTTP Proxy'
+    )
+
+    proxy_target = Unicode(
+        config=True,
+        help='The target (<proto>://<hostname>:<port>) that the proxy should route to'
+    )
+
+    def _proxy_target_default(self):
+        return 'http://{}:{}'.format(self.bind_ip, self.bind_port)
+
+    proxy_auth_token = Unicode(
+        os.environ.get('CONFIGPROXY_AUTH_TOKEN', ''),
+        config=True,
+        help='Auth token to use when talking to the proxy'
+    )
+    register_proxy = Bool(
+        True,
+        config=True,
+        help='Register nbserver with the Configurable HTTP Proxy (or not!)'
+    )
+
+    @tornado.gen.coroutine
+    def initialize(self, *args, **kwargs):
+        super().initialize(*args, **kwargs)
+        self.load_config_file(self.config_file)
+
+    def start(self):
+        publisher = self.publisher_class(parent=self)
+        app = tornado.web.Application([
+            (r"{}(.*)".format(self.base_url), MainHandler, {'publisher': publisher}),
+        ], autoreload=True)
+        app.listen(self.bind_port, address=self.bind_ip)
+
+        if self.register_proxy:
+            tornado.ioloop.IOLoop.current().run_sync(lambda: register_proxy(
+                self.proxy_api_url,
+                self.base_url,
+                self.proxy_target,
+                self.proxy_auth_token,
+            ))
+
+        tornado.ioloop.IOLoop.current().start()
+
 
 if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--config',
-        help='Path to config file',
-    )
-    parser.add_argument(
-        '--bind-ip',
-        help='IP on which to listen for requests',
-        default='127.0.0.1',
-    )
-    parser.add_argument(
-        '--bind-port',
-        help='Port on which to listen for requests',
-        default=8889
-    )
-
-    parser.add_argument(
-        '--proxy-api-url',
-        help='Full URL of the CHP REST API',
-    )
-    parser.add_argument(
-        '--proxy-target-ip',
-        help='IP for the proxy proxy requests back to',
-    )
-    args = parser.parse_args()
-
-    if args.config:
-        with open(args.config) as f:
-            exec(compile(f.read(), args.config, 'exec'), globals())
-
-    app = make_app()
-
-    app.listen(args.bind_port, address=args.bind_ip)
-    if args.proxy_api_url:
-        if args.proxy_target_ip:
-            target_ip = args.proxy_target_ip
-        else:
-            target_ip = args.bind_ip
-        auth_token = os.environ['CONFIGPROXY_AUTH_TOKEN']
-        tornado.ioloop.IOLoop.current().run_sync(lambda: register_proxy(
-            args.proxy_api_url,
-            base_url,
-            'http://{}:{}'.format(target_ip, args.bind_port),
-            auth_token,
-        ))
-    tornado.ioloop.IOLoop.current().start()
+    NbServer.instance().initialize()
+    NbServer.instance().start()
