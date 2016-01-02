@@ -70,14 +70,18 @@ class MainHandler(tornado.web.RequestHandler):
         try:
             NbServer.instance().log.error(mimetype)
             if mimetype == 'application/x-ipynb+json':
+                # FIXME: Steal from nbviewer how to do this non-blocking way!
                 html, res = exporter.from_file(file_handle)
                 self.write(html)
             else:
                 return self.handle_static_file(file_handle, mimetype)
         except FileNotFoundError:
+            # Note: This doesn't seem to catch errors from the static file handling,
+            # since we're just directly returning a future that's unwrapped by tornado
+            # Figure out how to deal with that properly!
             raise tornado.web.HTTPError(404)
         finally:
-            # FIXME: Test and verify that this is actually closed properly@
+            # FIXME: Test and verify that this is actually closed properly
             file_handle.close()
 
     @classmethod
