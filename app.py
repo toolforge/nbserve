@@ -47,8 +47,12 @@ class NaiveFilesystemPublisher(PublishProvider):
             return "application/octet-stream"
 
     @tornado.gen.coroutine
+    def path_for_url_segment(self, url_segment):
+        return os.path.join(self.base_path, url_segment)
+
+    @tornado.gen.coroutine
     def content_for_url_segment(self, url_segment):
-        path = os.path.join(self.base_path, url_segment)
+        path = yield self.path_for_url_segment(url_segment)
         mimetype = self.guess_mimetype(path)
         return (open(path), mimetype)
 
