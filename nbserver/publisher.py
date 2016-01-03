@@ -1,4 +1,5 @@
 import tornado
+from tornado import gen
 import mimetypes
 import os
 
@@ -7,7 +8,7 @@ from traitlets import Unicode
 
 
 class Publisher(Configurable):
-    @tornado.gen.coroutine
+    @gen.coroutine
     def content_for_url_segment(self, url_segment):
         """
         Return a tuple of (file_like_obj, mimetype) to be served for this url segment
@@ -43,11 +44,11 @@ class FileSystemPublisher(Publisher):
             # if mime_type not detected, use application/octet-stream
             return "application/octet-stream"
 
-    @tornado.gen.coroutine
+    @gen.coroutine
     def path_for_url_segment(self, url_segment):
         return os.path.join(self.base_path, url_segment)
 
-    @tornado.gen.coroutine
+    @gen.coroutine
     def content_for_url_segment(self, url_segment):
         path = yield self.path_for_url_segment(url_segment)
         mimetype = self.guess_mimetype(path)

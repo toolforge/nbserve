@@ -1,4 +1,5 @@
 import tornado
+from tornado import gen
 from tornado.httpclient import AsyncHTTPClient, HTTPRequest
 import json
 import os
@@ -15,7 +16,7 @@ class MainHandler(tornado.web.RequestHandler):
         self.publisher = kwargs.pop('publisher')
         super().__init__(*args, **kwargs)
 
-    @tornado.gen.coroutine
+    @gen.coroutine
     def get(self, filename):
         exporter = HTMLExporter()
         file_handle, mimetype = yield self.publisher.content_for_url_segment(filename)
@@ -59,7 +60,7 @@ class MainHandler(tornado.web.RequestHandler):
                     assert remaining == 0
                 return
 
-    @tornado.gen.coroutine
+    @gen.coroutine
     def handle_static_file(self, file_handle, mimetype):
         # Stolen from StaticFileHandler
         self.set_header('Content-Type',  mimetype)
@@ -149,7 +150,7 @@ class NbServer(Application):
         help='Register nbserver with the Configurable HTTP Proxy (or not!)'
     )
 
-    @tornado.gen.coroutine
+    @gen.coroutine
     def initialize(self, *args, **kwargs):
         super().initialize(*args, **kwargs)
         self.load_config_file(self.config_file)
