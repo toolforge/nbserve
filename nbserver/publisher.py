@@ -15,7 +15,7 @@ class Publisher(Configurable):
         raise NotImplementedError('Override in subclass')
 
 
-class NaiveFilesystemPublisher(Publisher):
+class FileSystemPublisher(Publisher):
     base_path = Unicode(
         os.getcwd(),
         config=True,

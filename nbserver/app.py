@@ -6,7 +6,7 @@ from traitlets.config import Application
 from traitlets import Unicode, Integer, Type, Bool, List
 from nbconvert.exporters import HTMLExporter
 
-from nbserver.publisher import Publisher, NaiveFilesystemPublisher
+from nbserver.publisher import Publisher, FileSystemPublisher
 
 
 class MainHandler(tornado.web.RequestHandler):
@@ -114,7 +114,7 @@ class NbServer(Application):
     )
 
     publisher_class = Type(
-        NaiveFilesystemPublisher,
+        FileSystemPublisher,
         Publisher,
         config=True,
         help='Class that provides publisher (loldocumentationgetbetter)'
