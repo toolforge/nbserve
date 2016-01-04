@@ -12,4 +12,7 @@ COPY . /srv/nbserve/
 
 RUN pip3 install ipython tornado nbconvert
 
+WORKDIR /srv/nbserve
+RUN python3 /srv/nbserve/setup.py install
+
 EXPOSE 8889
