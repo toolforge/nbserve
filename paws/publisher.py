@@ -51,4 +51,4 @@ class PAWSPublisher(FileSystemPublisher):
                 raise tornado.web.HTTPError(404)
             self.cached_uids[username] = uid
 
-        return os.path.join(self.base_path, str(uid), 'public', path)
+        return os.path.join(self.base_path, str(uid), path)
