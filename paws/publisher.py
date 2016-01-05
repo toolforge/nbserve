@@ -35,6 +35,12 @@ class PAWSPublisher(FileSystemPublisher):
             output: 43/public/Something.ipynb
         """
         splits = url_segment.split('/')
+
+        # We want to deny any path where any component starts with a .
+        # FIXME: Check and verify if usernames can start with a .
+        for component in splits:
+            if component.startswith('.'):
+                raise FileNotFoundError()
         username = splits[0]
         path = '/'.join(splits[1:])
         if username in self.cached_uids:
