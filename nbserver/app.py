@@ -18,24 +18,27 @@ class MainHandler(tornado.web.RequestHandler):
 
     @gen.coroutine
     def get(self, filename):
-        exporter = HTMLExporter()
-        file_handle, mimetype = yield self.publisher.content_for_url_segment(filename)
+        file_handle = None
         try:
-            NbServer.instance().log.error(mimetype)
+            file_handle, mimetype = yield self.publisher.content_for_url_segment(filename)
             if mimetype == 'application/x-ipynb+json':
                 # FIXME: Steal from nbviewer how to do this non-blocking way!
+                exporter = HTMLExporter()
                 html, res = exporter.from_file(file_handle)
                 self.write(html)
+                self.finish()
             else:
-                return self.handle_static_file(file_handle, mimetype)
+                yield from self.handle_static_file(file_handle, mimetype)
+                self.finish()
         except FileNotFoundError:
             # Note: This doesn't seem to catch errors from the static file handling,
             # since we're just directly returning a future that's unwrapped by tornado
             # Figure out how to deal with that properly!
             raise tornado.web.HTTPError(404)
         finally:
-            # FIXME: Test and verify that this is actually closed properly
-            file_handle.close()
+            if file_handle is not None:
+                # FIXME: Test and verify that this is actually closed properly
+                file_handle.close()
 
     @classmethod
     def get_chunked_content(cls, file, start=None, end=None):
