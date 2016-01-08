@@ -44,8 +44,9 @@ class MainHandler(tornado.web.RequestHandler):
                 else:
                     raise tornado.web.HTTPError(400)
 
+            self.set_header('Content-Type', mimetype)
             # if not, handle it as a static file!
-            return self.handle_static_file(file_handle, mimetype)
+            return self.handle_static_file(file_handle)
         except FileNotFoundError:
             # Note: This doesn't seem to catch errors from the static file handling,
             # since we're just directly returning a future that's unwrapped by tornado
@@ -80,9 +81,8 @@ class MainHandler(tornado.web.RequestHandler):
                 return
 
     @gen.coroutine
-    def handle_static_file(self, file_handle, mimetype):
+    def handle_static_file(self, file_handle):
         # Stolen from StaticFileHandler
-        self.set_header('Content-Type',  mimetype)
         content = MainHandler.get_chunked_content(file_handle)
         if isinstance(content, bytes):
             content = [content]
