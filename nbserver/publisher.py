@@ -1,7 +1,8 @@
-import tornado
+from datetime import datetime
 from tornado import gen
 import mimetypes
 import os
+import pytz
 
 from traitlets.config import Configurable
 from traitlets import Unicode
@@ -11,7 +12,7 @@ class Publisher(Configurable):
     @gen.coroutine
     def content_for_url_segment(self, url_segment):
         """
-        Return a tuple of (file_like_obj, mimetype) to be served for this url segment
+        Return a tuple of (file_like_obj, mimetype, lastmodified) to be served for this url segment
         """
         raise NotImplementedError('Override in subclass')
 
@@ -52,4 +53,6 @@ class FileSystemPublisher(Publisher):
     def content_for_url_segment(self, url_segment):
         path = yield self.path_for_url_segment(url_segment)
         mimetype = self.guess_mimetype(path)
-        return (open(path), mimetype)
+        file_handle = open(path)
+        lastmodified = pytz.utc.localize(datetime.fromtimestamp(os.path.getmtime(path)))
+        return (file_handle, mimetype, lastmodified)

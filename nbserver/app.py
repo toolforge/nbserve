@@ -3,6 +3,7 @@ from tornado import gen
 from tornado.httpclient import AsyncHTTPClient, HTTPRequest
 import json
 import os
+import email.utils
 from traitlets.config import Application
 from traitlets import Unicode, Integer, Type, Bool, List
 from nbconvert.exporters import HTMLExporter
@@ -21,7 +22,20 @@ class MainHandler(tornado.web.RequestHandler):
     def get(self, filename):
         file_handle = None
         try:
-            file_handle, mimetype = yield self.publisher.content_for_url_segment(filename)
+            file_handle, mimetype, lastmodified = yield self.publisher.content_for_url_segment(filename)
+
+            self.set_header('Last-Modified', lastmodified)
+
+            if_modified_since = self.request.headers.get('If-Modified-Since')
+            if if_modified_since is not None:
+                since_date = email.utils.parsedate_to_datetime(if_modified_since)
+                # FIXME: `lastmodified` has microseconds and since_date does not
+                # This means that if you just copy paste the output of Last-Modified
+                # to If-Modified-Since, that won't do what you think. This needs fixing
+                if since_date >= lastmodified:
+                    self.set_status(304)
+                    return
+
             if mimetype == 'application/x-ipynb+json':
                 format = self.get_argument('format', 'html', True)
                 if format == 'html':
