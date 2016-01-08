@@ -6,6 +6,7 @@ import os
 from traitlets.config import Application
 from traitlets import Unicode, Integer, Type, Bool, List
 from nbconvert.exporters import HTMLExporter
+from nbconvert.exporters.script import ScriptExporter
 
 from nbserver.publisher import Publisher, FileSystemPublisher
 
@@ -22,14 +23,29 @@ class MainHandler(tornado.web.RequestHandler):
         try:
             file_handle, mimetype = yield self.publisher.content_for_url_segment(filename)
             if mimetype == 'application/x-ipynb+json':
-                # FIXME: Steal from nbviewer how to do this non-blocking way!
-                exporter = HTMLExporter()
-                html, res = exporter.from_file(file_handle)
-                self.write(html)
-                self.finish()
-            else:
-                yield from self.handle_static_file(file_handle, mimetype)
-                self.finish()
+                format = self.get_argument('format', 'html', True)
+                if format == 'html':
+                    # FIXME: Steal from nbviewer how to do this non-blocking way!
+                    exporter = HTMLExporter()
+                    html, res = exporter.from_file(file_handle)
+                    self.write(html)
+                    self.finish()
+                    return
+                elif format == 'raw':
+                    pass  # Just get handled as a static file!
+                elif format == 'code':
+                    exporter = ScriptExporter()
+                    html, res = exporter.from_file(file_handle)
+                    # Force these all to be text/plain
+                    self.set_header('Content-Type', 'text/plain')
+                    self.write(html)
+                    self.finish()
+                    return
+                else:
+                    raise tornado.web.HTTPError(400)
+
+            # if not, handle it as a static file!
+            return self.handle_static_file(file_handle, mimetype)
         except FileNotFoundError:
             # Note: This doesn't seem to catch errors from the static file handling,
             # since we're just directly returning a future that's unwrapped by tornado
