@@ -10,7 +10,7 @@ RUN apt-get install --yes --no-install-recommends \
 
 COPY . /srv/nbserve/
 
-RUN pip3 install ipython tornado nbconvert
+RUN pip3 install ipython tornado nbconvert pytz
 
 WORKDIR /srv/nbserve
 RUN python3 /srv/nbserve/setup.py install
