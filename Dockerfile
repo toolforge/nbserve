@@ -15,4 +15,6 @@ RUN pip3 install ipython tornado nbconvert pytz
 WORKDIR /srv/nbserve
 RUN python3 /srv/nbserve/setup.py install
 
-EXPOSE 8889
+EXPOSE 8000
+
+CMD python3 -m nbserver.app
