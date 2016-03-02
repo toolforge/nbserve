@@ -3,6 +3,7 @@ from tornado import gen
 import mimetypes
 import os
 import pytz
+import io
 
 from traitlets.config import Configurable
 from traitlets import Unicode
@@ -53,6 +54,6 @@ class FileSystemPublisher(Publisher):
     def content_for_url_segment(self, url_segment):
         path = yield self.path_for_url_segment(url_segment)
         mimetype = self.guess_mimetype(path)
-        file_handle = open(path)
+        file_handle = io.open(path, encoding='utf-8')
         lastmodified = pytz.utc.localize(datetime.fromtimestamp(os.path.getmtime(path)))
         return (file_handle, mimetype, lastmodified)
